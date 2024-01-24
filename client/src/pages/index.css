@@ -1,0 +1,16 @@
+@keyframes floatAnimation {
+    0%, 100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-15px); 
+    }
+  }
+  
+  .floating-image {
+    animation: floatAnimation 3s infinite ease-in-out; 
+  }
+
+  .dashboard {
+      background-image: linear-gradient(to top, #fff1eb 0%, #ace0f9 100%);
+  }
