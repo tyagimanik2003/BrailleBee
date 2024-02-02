@@ -16,27 +16,19 @@ import PyPDF2
 from PyPDF2 import PdfReader, PdfWriter
 import sys
 from translate import Translator
-# Print the dimensions
-# print(f"Height: {height}, Width: {width}, Channels: {channels}")
 
 def start_model():
     global model, ocr_agent,captioner
-    # Print the dimensions
-    # print(f"Height: {height}, Width: {width}, Channels: {channels}")
-    print("==================================================================")
     model = lp.Detectron2LayoutModel(
     "/home/manik/.torch/iopath_cache/s/f3b12qc4hc0yh4m/config.yml",
     "/home/manik/.torch/iopath_cache/s/dgy9c10wykk4lq4/model_final.pth",
     extra_config=["MODEL.ROI_HEADS.SCORE_THRESH_TEST", 0.05],
     label_map={0: "Text", 1: "Title", 2: "List", 3: "Table", 4: "Figure"},
     )
-    # You need to load the image somewhere else, e.g., image = cv2.imread(...)
     captioner = pipeline("image-to-text", model="Salesforce/blip-image-captioning-base")
     ocr_agent = lp.TesseractAgent(languages='hin')
-    print("==================================================================")
 
 def process_image(image,model,n,pdf_no):
-    # image=cv2.imread(image)
 
     layout = model.detect(image) 
     layout_without_Fig = lp.Layout([b for b in layout if b.type=="Title" or b.type=="List" or b.type=="Table" or b.type=="Text"])
@@ -76,7 +68,6 @@ def process_image(image,model,n,pdf_no):
     blocks_to_delete = []
     for i, box1 in enumerate(figure_blocks):
         temp1 = box(box1.block.x_1, box1.block.y_1, box1.block.x_2, box1.block.y_2)
-        # Check if it's the last element, exit the loop
         if i == len(figure_blocks) - 1:
             break
         for j, box2 in enumerate(figure_blocks[i+1:], start=i+1):
@@ -96,21 +87,15 @@ def process_image(image,model,n,pdf_no):
     for block_to_delete in blocks_to_delete:
         figure_blocks.remove(block_to_delete)
     for box1 in (figure_blocks):
-        # print(box1.block.x_1)
         temp1=box(box1.block.x_1,box1.block.y_1,box1.block.x_2,box1.block.y_2)
-        # print(temp1)
         for box2 in(filtered_elements):
             temp2=box(box2.block.x_1,box2.block.y_1,box2.block.x_2,box2.block.y_2)
-            # # print(temp2)
-            # if temp1.intersects(temp2):
             intersection_area = temp2.intersection(temp1).area
-            total_area = temp2.area  # You can use temp2.area if you prefer
+            total_area = temp2.area  
             percentage_intersecting = (intersection_area / total_area) * 100
             if percentage_intersecting > 40:
                 box1.block.x_2=(box2.block.x_1)-5
     figure_blocks=sorted(figure_blocks,key=lambda x: x.block.y_1)
-
-    # text_blocks = [box for box in filtered_elements if box.type == 'Text']
     def translate_english_to_hindi(text):
         translator = Translator(to_lang = 'hi')
         translation = translator.translate(text)
@@ -121,11 +106,7 @@ def process_image(image,model,n,pdf_no):
         segment_image = (block
                         .pad(left=5, right=5, top=5, bottom=5)
                         .crop_image(image))
-
-        # Specify the file path for saving the image
         image_filename = os.path.join(output_folder, f'Page{n}_segment_image_{i}.png')
-
-        # Save the segmented image
         try:
             cv2.imwrite(image_filename, segment_image)
         except cv2.error as e:
@@ -136,10 +117,9 @@ def process_image(image,model,n,pdf_no):
         entext="An image of "+ entext
         text=translate_english_to_hindi(entext)
         block.set(text=text, inplace=True)
-    # print("==================================================================")
+        
     text_blocks = lp.Layout([b for b in filtered_elements])
-    # print(len(text_blocks))
-    # print("==================================================================")
+
     h, w = image.shape[:2]
 
     left_interval = lp.Interval(0, w/2*1.05, axis='x').put_on_canvas(image)
@@ -152,8 +132,6 @@ def process_image(image,model,n,pdf_no):
 
     text_blocks = lp.Layout([b.set(id=idx) for idx, b in enumerate(left_blocks + right_blocks)])
 
-    # print("==================================================================")
-
     def process_text_block(block):
         segment_image = (block.pad(left=5, right=5, top=5, bottom=5)
                          .crop_image(image))
@@ -163,8 +141,7 @@ def process_image(image,model,n,pdf_no):
     num_workers = 2
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
         executor.map(process_text_block, text_blocks)
-
-    # print("==================================================================")
+        
     result_blocks=text_blocks.copy()
     def remove_whitespace(s):
         return ''.join(s.split())
@@ -177,9 +154,6 @@ def process_image(image,model,n,pdf_no):
                 del result_blocks[i]
             elif remove_whitespace(st2) in remove_whitespace(st1):
                 del result_blocks[j]
-
-
-    # print("==================================================================")
 
 
     return result_blocks,figure_blocks
@@ -251,7 +225,7 @@ def generate_css_and_html(result_blocks,figure_blocks,n,pdf_no):
     for i, box in enumerate(result_blocks, start=1):
         html_code += f'''\n            <div class="text-block text-block{i}">\n                {box.text}\n            </div>'''
 
-    for i, block in enumerate(figure_blocks, start=1):  # start=1 instead of start=0
+    for i, block in enumerate(figure_blocks, start=1): 
         html_code += f'''\n            <div class="text-block image-block{i}">\n                {block.text}\n            </div>'''
     html_code += """
         </div>
@@ -271,15 +245,15 @@ def delete_alternate_pages(input_pdf, output_pdf):
 
         for page_num in keep_pages:
             page = reader.pages[page_num]
-            if "/Annots" in page:  # Check for annotations before iterating
-                annots = page["/Annots"].get_object()  # Access annotations as a list
+            if "/Annots" in page: 
+                annots = page["/Annots"].get_object() 
                 for annot in annots:
-                    writer.add_annotation(annot)  # Add annotations to output PDF
+                    writer.add_annotation(annot) 
             writer.add_page(page)
 
         writer.write(output_file)
 def convert_html_to_pdf_and_docx(html_file_path, pdf_file, word_file,pdf_no):
-    # OPTIONS
+
     cwd = f'/home/manik/Desktop/Dell/{pdf_no}/Html Folder'
     onlyfiles = [os.path.join(cwd, f) for f in os.listdir(cwd) if 
     os.path.isfile(os.path.join(cwd, f))]
@@ -290,52 +264,43 @@ def convert_html_to_pdf_and_docx(html_file_path, pdf_file, word_file,pdf_no):
         "encoding": "utf-8",
     }
 
-    # Convert HTML to PDF
+
     pdfkit.from_file(sorted_files, f'/home/manik/Desktop/Dell/{pdf_no}/PDF Folder/final_temp.pdf', options=kitoptions)
     delete_alternate_pages(f'/home/manik/Desktop/Dell/{pdf_no}/PDF Folder/final_temp.pdf',pdf_file)
 
-    # Convert PDF to DOCX
     cv = Converter(pdf_file)
     cv.convert(word_file, start=0, end=None)
     cv.close()
 
-# image=cv2.imread('pdf_im/page_1_img_46.png')
-
-# image_path=['/home/manik/Desktop/Dell/pdf_im/page_1_img_46.png','/home/manik/Desktop/Dell/pdf_im/page_2_img_47.png','/home/manik/Desktop/Dell/pdf_im/page_3_img_48.png','/home/manik/Desktop/Dell/pdf_im/page_4_img_49.png','/home/manik/Desktop/Dell/pdf_im/page_5_img_50.png','/home/manik/Desktop/Dell/pdf_im/page_6_img_51.png','/home/manik/Desktop/Dell/pdf_im/page_7_img_52.png','/home/manik/Desktop/Dell/pdf_im/page_8_img_53.png','/home/manik/Desktop/Dell/pdf_im/page_9_img_54.png','/home/manik/Desktop/Dell/pdf_im/page_10_img_55.png']
-
 '''Pdf to word'''
 def extract_images_from_pdf(pdf_path, output_folder,pdf_no):
-    # Open the PDF file
+
     pdf_document = fitz.open(pdf_path)
 
     for page_number in range(pdf_document.page_count):
-        # Get the page
+
         page = pdf_document[page_number]
 
-        # Get the images on the page
         images = page.get_images(full=True)
 
         for img_index, img_info in enumerate(images):
-            # Get the image data
+
             img_index = img_info[0]
             base_image = pdf_document.extract_image(img_index)
 
-            # Convert image data to bytes
             image_bytes = base_image["image"]
 
-            # Write the image to a file
             image_filename = f"/home/manik/Desktop/Dell/{pdf_no}/pdf_im/page_{page_number + 1}.png"
             with open(image_filename, "wb") as image_file:
                 image_file.write(image_bytes)
 
-    # Close the PDF file
     pdf_document.close()
 
 
-pdf_path=sys.argv[1]#['/home/manik/Desktop/Dell/pdf1 NED.pdf','/home/manik/Desktop/Dell/pdf2 ned.pdf']
+pdf_path=sys.argv[1]
 def completed_call(pdf_path,pdf_no):
-    # print(sys.argv[1],sys.argv[2])
-    start_model() #by nev dread
+
+    start_model() 
     os.makedirs(f'/home/manik/Desktop/Dell/{pdf_no}')
     os.makedirs(f'/home/manik/Desktop/Dell/{pdf_no}/Html Folder')
     os.makedirs(f"/home/manik/Desktop/Dell/{pdf_no}/PDF Folder")
@@ -348,10 +313,7 @@ def completed_call(pdf_path,pdf_no):
     pdf_file = f"/home/manik/Desktop/Dell/{pdf_no}/PDF Folder/final.pdf"
     word_file = sys.argv[2]
 
-    # Close the PDF file
-    
     extract_images_from_pdf(pdf_path,f'/home/manik/Desktop/Dell/{pdf_no}/pdf_im',pdf_no)
-# image_path=['/home/manik/Desktop/Dell/pdf_im/page_1.png','/home/manik/Desktop/Dell/pdf_im/page_2.png','/home/manik/Desktop/Dell/pdf_im/page_3.png','/home/manik/Desktop/Dell/pdf_im/page_4.png','/home/manik/Desktop/Dell/pdf_im/page_5.png','/home/manik/Desktop/Dell/pdf_im/page_6.png','/home/manik/Desktop/Dell/pdf_im/page_7.png','/home/manik/Desktop/Dell/pdf_im/page_8.png','/home/manik/Desktop/Dell/pdf_im/page_9.png','/home/manik/Desktop/Dell/pdf_im/page_10.png']
     all_files = os.listdir(f'/home/manik/Desktop/Dell/{pdf_no}/pdf_im')
     image_path= natsorted([os.path.join(f'/home/manik/Desktop/Dell/{pdf_no}/pdf_im', file) for file in all_files if file.lower().endswith('.png')])
 
@@ -368,8 +330,6 @@ def completed_call(pdf_path,pdf_no):
             html_file.write(html_code)
     convert_html_to_pdf_and_docx(folder_path, pdf_file, word_file,pdf_no)
 
-
-# print(result)
 
 start_time = time.time()
 ls=pdf_path.split('/')
